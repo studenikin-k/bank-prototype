@@ -1,0 +1,17 @@
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+bin/
+tmp/
+.env
+.env.local
+.pgdata/
+postgres-data/
+.idea/
+.vscode/
+*.swp
+*.swo
+main

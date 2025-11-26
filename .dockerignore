@@ -1,0 +1,11 @@
+.idea
+.git
+*.exe
+*.dll
+*.so
+*.test
+bin/
+tmp/
+.env
+.pgdata
+main

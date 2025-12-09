@@ -1,4 +1,4 @@
--- +goose Up
+
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE users (
@@ -31,8 +31,3 @@ CREATE TABLE transactions (
 
 CREATE INDEX idx_tx_from ON transactions(from_account_id);
 CREATE INDEX idx_tx_to   ON transactions(to_account_id);
-
--- +goose Down
-DROP TABLE transactions;
-DROP TABLE accounts;
-DROP TABLE users;

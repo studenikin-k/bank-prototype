@@ -48,3 +48,39 @@ func (r *UserRepository) GetByName(ctx context.Context, name string) (*models.Us
 	utils.LogSuccess("UserRepository", fmt.Sprintf("Пользователь найден: %s (ID: %s)", user.Name, user.ID))
 	return user, nil
 }
+
+func (r *UserRepository) GetByID(ctx context.Context, userID string) (*models.User, error) {
+	query := `SELECT id, name, password_hash, created_at FROM users WHERE id = $1`
+
+	utils.LogDB("GET USER BY ID", fmt.Sprintf("Поиск пользователя по ID: %s", userID))
+
+	user := &models.User{}
+	err := r.db.QueryRow(ctx, query, userID).Scan(&user.ID, &user.Name, &user.PasswordHash, &user.CreatedAt)
+	if err != nil {
+		utils.LogWarning("UserRepository", fmt.Sprintf("Пользователь с ID %s не найден", userID))
+		return nil, err
+	}
+
+	utils.LogSuccess("UserRepository", fmt.Sprintf("Пользователь найден: %s (ID: %s)", user.Name, user.ID))
+	return user, nil
+}
+
+func (r *UserRepository) Delete(ctx context.Context, userID string) error {
+	query := `DELETE FROM users WHERE id = $1`
+
+	utils.LogDB("DELETE USER", fmt.Sprintf("Удаление пользователя: %s", userID))
+
+	result, err := r.db.Exec(ctx, query, userID)
+	if err != nil {
+		utils.LogError("UserRepository", fmt.Sprintf("Ошибка удаления пользователя %s", userID), err)
+		return err
+	}
+
+	if result.RowsAffected() == 0 {
+		utils.LogWarning("UserRepository", fmt.Sprintf("Пользователь %s не найден для удаления", userID))
+		return fmt.Errorf("user not found")
+	}
+
+	utils.LogSuccess("UserRepository", fmt.Sprintf("Пользователь удалён: %s (каскадно удалены все счета и транзакции)", userID))
+	return nil
+}

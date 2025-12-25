@@ -2,6 +2,7 @@ package main
 
 import (
 	"bank-prototype/internal/handlers"
+	"bank-prototype/internal/middleware"
 	"bank-prototype/internal/repository"
 	"bank-prototype/internal/services"
 	"bank-prototype/internal/utils"
@@ -44,6 +45,9 @@ func main() {
 	authService := services.NewAuthService("your_jwt_secret_change_me_in_production", time.Hour*24)
 	userRepo := repository.NewUserRepository(dbpool)
 
+	// Инициализация middleware
+	authMiddleware := middleware.NewAuthMiddleware(authService)
+
 	// Инициализация handlers
 	authHandler := handlers.NewAuthHandler(authService, userRepo)
 
@@ -56,6 +60,7 @@ func main() {
 
 		// Роутинг
 		switch {
+		// Публичные эндпоинты (без авторизации)
 		case method == "GET" && path == "/health":
 			healthHandler(ctx)
 
@@ -64,6 +69,10 @@ func main() {
 
 		case method == "POST" && path == "/login":
 			authHandler.LoginHandler(ctx)
+
+		// Защищённые эндпоинты (с авторизацией)
+		case method == "DELETE" && path == "/users/me":
+			authMiddleware.RequireAuth(authHandler.DeleteUserHandler)(ctx)
 
 		default:
 			utils.LogWarning("Router", "Неизвестный маршрут: "+method+" "+path)

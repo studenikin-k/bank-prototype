@@ -184,3 +184,48 @@ func (h *AuthHandler) LoginHandler(ctx *fasthttp.RequestCtx) {
 
 	utils.LogResponse("/login", fasthttp.StatusOK, time.Since(startTime))
 }
+
+// DeleteUserHandler - удаление своего аккаунта
+func (h *AuthHandler) DeleteUserHandler(ctx *fasthttp.RequestCtx) {
+	startTime := time.Now()
+
+	// Получаем user_id из контекста (установлен middleware)
+	userID, ok := ctx.UserValue("user_id").(string)
+	if !ok || userID == "" {
+		utils.LogError("AuthHandler", "user_id не найден в контексте", nil)
+		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+		ctx.SetContentType("application/json")
+		json.NewEncoder(ctx).Encode(map[string]string{
+			"error": "Требуется авторизация",
+		})
+		utils.LogResponse("/users/me", fasthttp.StatusUnauthorized, time.Since(startTime))
+		return
+	}
+
+	utils.LogRequest("DELETE", "/users/me", userID)
+	utils.LogInfo("AuthHandler", fmt.Sprintf("Попытка удаления пользователя: %s", userID))
+
+	// Удаление пользователя (каскадно удалятся счета и транзакции)
+	if err := h.userRepo.Delete(ctx, userID); err != nil {
+		utils.LogError("AuthHandler", fmt.Sprintf("Ошибка удаления пользователя %s", userID), err)
+		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+		ctx.SetContentType("application/json")
+		json.NewEncoder(ctx).Encode(map[string]string{
+			"error": "Ошибка удаления пользователя",
+		})
+		utils.LogResponse("/users/me", fasthttp.StatusInternalServerError, time.Since(startTime))
+		return
+	}
+
+	utils.LogSuccess("AuthHandler", fmt.Sprintf("Пользователь удалён: %s", userID))
+
+	// Ответ
+	ctx.SetStatusCode(fasthttp.StatusOK)
+	ctx.SetContentType("application/json")
+	json.NewEncoder(ctx).Encode(map[string]interface{}{
+		"message": "Пользователь успешно удалён",
+		"user_id": userID,
+	})
+
+	utils.LogResponse("/users/me", fasthttp.StatusOK, time.Since(startTime))
+}

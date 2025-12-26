@@ -14,7 +14,6 @@ var (
 	ErrInvalidAmount       = errors.New("сумма должна быть больше 0")
 	ErrSelfTransfer        = errors.New("нельзя переводить на свой же счёт")
 	ErrInsufficientBalance = errors.New("недостаточно средств на счёте")
-	ErrUnauthorizedAccess  = errors.New("нет доступа к этому ресурсу")
 )
 
 type TransactionService struct {

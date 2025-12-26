@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// ANSI цветовые коды
 const (
 	ColorReset  = "\033[0m"
 	ColorRed    = "\033[31m"
@@ -18,7 +17,6 @@ const (
 	ColorGray   = "\033[90m"
 )
 
-// LogInfo - информационное сообщение (синий)
 func LogInfo(component, message string) {
 	log.Printf("%s[INFO]%s %s[%s]%s %s",
 		ColorBlue, ColorReset,
@@ -26,7 +24,6 @@ func LogInfo(component, message string) {
 		message)
 }
 
-// LogSuccess - успешная операция (зелёный)
 func LogSuccess(component, message string) {
 	log.Printf("%s[SUCCESS]%s %s[%s]%s %s",
 		ColorGreen, ColorReset,
@@ -34,7 +31,6 @@ func LogSuccess(component, message string) {
 		message)
 }
 
-// LogWarning - предупреждение (жёлтый)
 func LogWarning(component, message string) {
 	log.Printf("%s[WARNING]%s %s[%s]%s %s",
 		ColorYellow, ColorReset,
@@ -42,7 +38,6 @@ func LogWarning(component, message string) {
 		message)
 }
 
-// LogError - ошибка (красный)
 func LogError(component, message string, err error) {
 	if err != nil {
 		log.Printf("%s[ERROR]%s %s[%s]%s %s: %s%v%s",
@@ -58,7 +53,6 @@ func LogError(component, message string, err error) {
 	}
 }
 
-// LogDebug - отладочная информация (фиолетовый)
 func LogDebug(component, message string) {
 	log.Printf("%s[DEBUG]%s %s[%s]%s %s",
 		ColorPurple, ColorReset,
@@ -66,7 +60,6 @@ func LogDebug(component, message string) {
 		message)
 }
 
-// LogRequest - входящий HTTP запрос (бирюзовый)
 func LogRequest(method, path, userID string) {
 	log.Printf("%s[REQUEST]%s %s%s%s %s | UserID: %s%s%s",
 		ColorCyan, ColorReset,
@@ -75,7 +68,6 @@ func LogRequest(method, path, userID string) {
 		ColorYellow, userID, ColorReset)
 }
 
-// LogResponse - исходящий HTTP ответ
 func LogResponse(path string, statusCode int, duration time.Duration) {
 	color := ColorGreen
 	if statusCode >= 400 && statusCode < 500 {
@@ -91,7 +83,6 @@ func LogResponse(path string, statusCode int, duration time.Duration) {
 		ColorWhite, duration, ColorReset)
 }
 
-// LogDB - операции с базой данных (серый)
 func LogDB(operation, query string) {
 	log.Printf("%s[DB]%s %s[%s]%s %s",
 		ColorGray, ColorReset,

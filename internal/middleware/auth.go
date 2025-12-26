@@ -22,12 +22,10 @@ func NewAuthMiddleware(authService *services.AuthService) *AuthMiddleware {
 	}
 }
 
-// RequireAuth - middleware для проверки JWT токена
 func (m *AuthMiddleware) RequireAuth(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
 		startTime := time.Now()
 
-		// Извлекаем заголовок Authorization
 		authHeader := string(ctx.Request.Header.Peek("Authorization"))
 		if authHeader == "" {
 			utils.LogWarning("Middleware", "Отсутствует заголовок Authorization")
@@ -40,7 +38,6 @@ func (m *AuthMiddleware) RequireAuth(next fasthttp.RequestHandler) fasthttp.Requ
 			return
 		}
 
-		// Проверяем формат "Bearer <token>"
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
 			utils.LogWarning("Middleware", "Неверный формат заголовка Authorization")
@@ -55,7 +52,6 @@ func (m *AuthMiddleware) RequireAuth(next fasthttp.RequestHandler) fasthttp.Requ
 
 		token := parts[1]
 
-		// Валидируем токен
 		claims, err := m.authService.ValidateToken(token)
 		if err != nil {
 			utils.LogWarning("Middleware", fmt.Sprintf("Невалидный токен: %v", err))
@@ -68,11 +64,9 @@ func (m *AuthMiddleware) RequireAuth(next fasthttp.RequestHandler) fasthttp.Requ
 			return
 		}
 
-		// Устанавливаем user_id в контекст
 		ctx.SetUserValue("user_id", claims.UserID)
 		utils.LogDebug("Middleware", fmt.Sprintf("Аутентифицирован пользователь: %s", claims.UserID))
 
-		// Передаём управление следующему обработчику
 		next(ctx)
 	}
 }

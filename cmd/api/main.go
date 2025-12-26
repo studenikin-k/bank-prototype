@@ -20,15 +20,13 @@ import (
 )
 
 func main() {
-	utils.LogInfo("Server", "🚀 Запуск банковской системы...")
+	utils.LogInfo("Server", "Запуск банковской системы...")
 
-	// Миграции
 	if err := runMigrations(); err != nil {
 		utils.LogError("Server", "Критическая ошибка миграций", err)
 		os.Exit(1)
 	}
 
-	// Подключение к БД
 	dbURL := "postgres://user:pass@localhost:5435/bank?sslmode=disable"
 	utils.LogInfo("Database", "Подключение к PostgreSQL...")
 
@@ -39,28 +37,29 @@ func main() {
 	}
 	defer dbpool.Close()
 
-	utils.LogSuccess("Database", "✓ Подключение к базе данных установлено")
+	utils.LogSuccess("Database", "Подключение к базе данных установлено")
 
-	// Инициализация сервисов
-	authService := services.NewAuthService("your_jwt_secret_change_me_in_production", time.Hour*24)
 	userRepo := repository.NewUserRepository(dbpool)
+	accountRepo := repository.NewAccountRepository(dbpool)
+	transactionRepo := repository.NewTransactionRepository(dbpool)
 
-	// Инициализация middleware
+	authService := services.NewAuthService("your_jwt_secret_change_me_in_production", time.Hour*24)
+	accountService := services.NewAccountService(accountRepo)
+	transactionService := services.NewTransactionService(transactionRepo, accountRepo)
+
 	authMiddleware := middleware.NewAuthMiddleware(authService)
 
-	// Инициализация handlers
 	authHandler := handlers.NewAuthHandler(authService, userRepo)
+	accountHandler := handlers.NewAccountHandler(accountService)
+	transactionHandler := handlers.NewTransactionHandler(transactionService)
 
-	// HTTP-сервер
 	utils.LogInfo("Server", "Запуск HTTP сервера на порту :8080...")
 
 	err = fasthttp.ListenAndServe(":8080", func(ctx *fasthttp.RequestCtx) {
 		path := string(ctx.Path())
 		method := string(ctx.Method())
 
-		// Роутинг
 		switch {
-		// Публичные эндпоинты (без авторизации)
 		case method == "GET" && path == "/health":
 			healthHandler(ctx)
 
@@ -70,9 +69,38 @@ func main() {
 		case method == "POST" && path == "/login":
 			authHandler.LoginHandler(ctx)
 
-		// Защищённые эндпоинты (с авторизацией)
 		case method == "DELETE" && path == "/users/me":
 			authMiddleware.RequireAuth(authHandler.DeleteUserHandler)(ctx)
+
+		case method == "POST" && path == "/accounts":
+			authMiddleware.RequireAuth(accountHandler.CreateAccount)(ctx)
+
+		case method == "GET" && path == "/accounts":
+			authMiddleware.RequireAuth(accountHandler.GetAccounts)(ctx)
+
+		case method == "GET" && len(path) > 10 && path[:10] == "/accounts/":
+			accountID := path[10:]
+			ctx.SetUserValue("id", accountID)
+			authMiddleware.RequireAuth(accountHandler.GetAccountByID)(ctx)
+
+		case method == "DELETE" && len(path) > 10 && path[:10] == "/accounts/":
+			accountID := path[10:]
+			ctx.SetUserValue("id", accountID)
+			authMiddleware.RequireAuth(accountHandler.DeleteAccount)(ctx)
+
+		case method == "POST" && path == "/transactions/transfer":
+			authMiddleware.RequireAuth(transactionHandler.Transfer)(ctx)
+
+		case method == "POST" && path == "/transactions/payment":
+			authMiddleware.RequireAuth(transactionHandler.Payment)(ctx)
+
+		case method == "GET" && path == "/transactions":
+			authMiddleware.RequireAuth(transactionHandler.GetHistory)(ctx)
+
+		case method == "GET" && len(path) > 14 && path[:14] == "/transactions/":
+			transactionID := path[14:]
+			ctx.SetUserValue("id", transactionID)
+			authMiddleware.RequireAuth(transactionHandler.GetByID)(ctx)
 
 		default:
 			utils.LogWarning("Router", "Неизвестный маршрут: "+method+" "+path)
@@ -98,7 +126,7 @@ func healthHandler(ctx *fasthttp.RequestCtx) {
 	response := map[string]interface{}{
 		"status":  "OK",
 		"time":    time.Now().Format(time.RFC1123),
-		"message": "Всё чики пуки братишка! 🏦",
+		"message": "Bank Prototype API is running",
 		"service": "Bank Prototype API",
 		"version": "0.1.0",
 	}
@@ -117,7 +145,7 @@ func healthHandler(ctx *fasthttp.RequestCtx) {
 func runMigrations() error {
 	dbURL := "postgres://user:pass@localhost:5435/bank?sslmode=disable"
 
-	utils.LogInfo("Migration", "📋 Запуск миграций базы данных...")
+	utils.LogInfo("Migration", "Запуск миграций базы данных")
 
 	migration, err := migrate.New("file://migrations", dbURL)
 	if err != nil {
@@ -133,6 +161,6 @@ func runMigrations() error {
 		return err
 	}
 
-	utils.LogSuccess("Migration", "✓ Миграции выполнены успешно")
+	utils.LogSuccess("Migration", "Миграции выполнены успешно")
 	return nil
 }

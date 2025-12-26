@@ -25,7 +25,6 @@ func NewAuthHandler(authService *services.AuthService, userRepo *repository.User
 	}
 }
 
-// RegisterHandler - регистрация нового пользователя
 func (h *AuthHandler) RegisterHandler(ctx *fasthttp.RequestCtx) {
 	startTime := time.Now()
 	utils.LogRequest("POST", "/register", "anonymous")
@@ -42,7 +41,6 @@ func (h *AuthHandler) RegisterHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Валидация
 	if req.Name == "" || req.Password == "" {
 		utils.LogWarning("AuthHandler", "Отсутствуют обязательные поля")
 		ctx.SetStatusCode(fasthttp.StatusBadRequest)
@@ -67,7 +65,6 @@ func (h *AuthHandler) RegisterHandler(ctx *fasthttp.RequestCtx) {
 
 	utils.LogInfo("AuthHandler", fmt.Sprintf("Регистрация пользователя: %s", req.Name))
 
-	// Хеширование пароля
 	passwordHash, err := h.authService.HashPassword(req.Password)
 	if err != nil {
 		utils.LogError("AuthHandler", "Ошибка хеширования пароля", err)
@@ -80,7 +77,6 @@ func (h *AuthHandler) RegisterHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Создание пользователя
 	user := &models.User{
 		Name:         req.Name,
 		PasswordHash: passwordHash,
@@ -99,7 +95,6 @@ func (h *AuthHandler) RegisterHandler(ctx *fasthttp.RequestCtx) {
 
 	utils.LogSuccess("AuthHandler", fmt.Sprintf("Пользователь зарегистрирован: %s", user.Name))
 
-	// Ответ
 	ctx.SetStatusCode(fasthttp.StatusCreated)
 	ctx.SetContentType("application/json")
 	json.NewEncoder(ctx).Encode(map[string]interface{}{
@@ -185,11 +180,9 @@ func (h *AuthHandler) LoginHandler(ctx *fasthttp.RequestCtx) {
 	utils.LogResponse("/login", fasthttp.StatusOK, time.Since(startTime))
 }
 
-// DeleteUserHandler - удаление своего аккаунта
 func (h *AuthHandler) DeleteUserHandler(ctx *fasthttp.RequestCtx) {
 	startTime := time.Now()
 
-	// Получаем user_id из контекста (установлен middleware)
 	userID, ok := ctx.UserValue("user_id").(string)
 	if !ok || userID == "" {
 		utils.LogError("AuthHandler", "user_id не найден в контексте", nil)
@@ -205,7 +198,6 @@ func (h *AuthHandler) DeleteUserHandler(ctx *fasthttp.RequestCtx) {
 	utils.LogRequest("DELETE", "/users/me", userID)
 	utils.LogInfo("AuthHandler", fmt.Sprintf("Попытка удаления пользователя: %s", userID))
 
-	// Удаление пользователя (каскадно удалятся счета и транзакции)
 	if err := h.userRepo.Delete(ctx, userID); err != nil {
 		utils.LogError("AuthHandler", fmt.Sprintf("Ошибка удаления пользователя %s", userID), err)
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
@@ -219,7 +211,6 @@ func (h *AuthHandler) DeleteUserHandler(ctx *fasthttp.RequestCtx) {
 
 	utils.LogSuccess("AuthHandler", fmt.Sprintf("Пользователь удалён: %s", userID))
 
-	// Ответ
 	ctx.SetStatusCode(fasthttp.StatusOK)
 	ctx.SetContentType("application/json")
 	json.NewEncoder(ctx).Encode(map[string]interface{}{

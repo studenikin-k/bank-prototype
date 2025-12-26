@@ -14,7 +14,7 @@ CREATE INDEX idx_users_name ON users(name);
 CREATE TABLE accounts (
                           id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                           user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                          balance DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+                          balance DECIMAL(15,2) NOT NULL DEFAULT 100.00,
                           status TEXT NOT NULL DEFAULT 'active',
                           created_at TIMESTAMPTZ DEFAULT NOW()
 );

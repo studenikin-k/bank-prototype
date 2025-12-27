@@ -28,6 +28,13 @@ type PaymentRequest struct {
 	Amount        float64 `json:"amount"`
 }
 
+type TransactionRequest struct {
+	Type          string  `json:"type"` // "transfer" или "payment"
+	FromAccountID string  `json:"from_account_id"`
+	ToAccountID   string  `json:"to_account_id"`
+	Amount        float64 `json:"amount"`
+}
+
 type TransactionResponse struct {
 	ID            string  `json:"id"`
 	Type          string  `json:"type"`

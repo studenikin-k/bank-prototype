@@ -9,18 +9,19 @@ import (
 	"bank-prototype/internal/models"
 	"bank-prototype/internal/repository"
 	"bank-prototype/internal/utils"
+	"bank-prototype/internal/worker"
 )
 
 var (
-	ErrInvalidAmount       = errors.New("сумма должна быть больше 0")
-	ErrSelfTransfer        = errors.New("нельзя переводить на свой же счёт")
-	ErrInsufficientBalance = errors.New("недостаточно средств на счёте")
+	ErrInvalidAmount = errors.New("сумма должна быть больше 0")
+	ErrSelfTransfer  = errors.New("нельзя переводить на свой же счёт")
 )
 
 type TransactionService struct {
 	transactionRepo *repository.TransactionRepository
 	accountRepo     *repository.AccountRepository
 	cache           *cache.RedisCache
+	workerPool      *worker.WorkerPool
 }
 
 func NewTransactionService(
@@ -44,6 +45,12 @@ func NewTransactionServiceWithCache(
 		accountRepo:     accountRepo,
 		cache:           cache,
 	}
+}
+
+// SetWorkerPool устанавливает пул воркеров для асинхронной обработки
+func (s *TransactionService) SetWorkerPool(pool *worker.WorkerPool) {
+	s.workerPool = pool
+	utils.LogSuccess("TransactionService", "Worker Pool подключен к сервису транзакций")
 }
 
 func (s *TransactionService) Transfer(ctx context.Context, userID string, req models.TransferRequest) (*models.Transaction, error) {
@@ -76,14 +83,7 @@ func (s *TransactionService) Transfer(ctx context.Context, userID string, req mo
 		return nil, err
 	}
 
-	if s.cache != nil {
-		_ = s.cache.Delete(ctx,
-			cache.AccountBalanceKey(req.FromAccountID),
-			cache.AccountBalanceKey(req.ToAccountID),
-			cache.AccountBalanceKey(repository.SystemBankAccountID),
-		)
-		utils.LogInfo("Cache", fmt.Sprintf("Инвалидирован кеш балансов счетов: %s, %s, system", req.FromAccountID, req.ToAccountID))
-	}
+	s.invalidateCacheAsync(ctx, req.FromAccountID, req.ToAccountID, transaction.ID)
 
 	utils.LogSuccess("TransactionService", fmt.Sprintf("Перевод %s успешно выполнен", transaction.ID))
 
@@ -236,4 +236,46 @@ func (s *TransactionService) validateTransfer(ctx context.Context, userID, fromA
 	}
 
 	return nil
+}
+
+// invalidateCacheAsync - асинхронная инвалидация кеша через Worker Pool
+func (s *TransactionService) invalidateCacheAsync(ctx context.Context, fromAccountID, toAccountID, transactionID string) {
+	if s.cache == nil {
+		return
+	}
+
+	// Если Worker Pool доступен, используем его для асинхронной обработки
+	if s.workerPool != nil {
+		job := worker.Job{
+			ID: fmt.Sprintf("cache-invalidate-%s", transactionID),
+			Task: func() error {
+				return s.cache.Delete(ctx,
+					cache.AccountBalanceKey(fromAccountID),
+					cache.AccountBalanceKey(toAccountID),
+					cache.AccountBalanceKey(repository.SystemBankAccountID),
+				)
+			},
+		}
+
+		// Пытаемся добавить задачу в очередь (неблокирующая операция)
+		if err := s.workerPool.Submit(job); err != nil {
+			// Если очередь переполнена, выполняем синхронно
+			utils.LogWarning("TransactionService", "Worker Pool переполнен, инвалидация кеша выполняется синхронно")
+			_ = s.cache.Delete(ctx,
+				cache.AccountBalanceKey(fromAccountID),
+				cache.AccountBalanceKey(toAccountID),
+				cache.AccountBalanceKey(repository.SystemBankAccountID),
+			)
+		} else {
+			utils.LogDebug("TransactionService", "Инвалидация кеша добавлена в Worker Pool для транзакции %s", transactionID)
+		}
+	} else {
+		// Если Worker Pool недоступен, выполняем синхронно
+		_ = s.cache.Delete(ctx,
+			cache.AccountBalanceKey(fromAccountID),
+			cache.AccountBalanceKey(toAccountID),
+			cache.AccountBalanceKey(repository.SystemBankAccountID),
+		)
+		utils.LogInfo("Cache", fmt.Sprintf("Инвалидирован кеш балансов счетов: %s, %s, system", fromAccountID, toAccountID))
+	}
 }

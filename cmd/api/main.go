@@ -7,6 +7,7 @@ import (
 	"bank-prototype/internal/repository"
 	"bank-prototype/internal/services"
 	"bank-prototype/internal/utils"
+	"bank-prototype/internal/worker"
 	"context"
 	"encoding/json"
 	"log"
@@ -70,6 +71,17 @@ func main() {
 	}
 	utils.LogSuccess("Redis", "Подключение к Redis установлено")
 
+	// Инициализация Worker Pool
+	utils.LogInfo("WorkerPool", "Инициализация пула воркеров...")
+	workerPool := worker.NewWorkerPool(10, 1000, 3) // 10 воркеров, очередь на 1000 задач, 3 повтора
+	workerPool.Start()
+	defer func() {
+		utils.LogInfo("WorkerPool", "Остановка пула воркеров...")
+		if err := workerPool.Shutdown(30 * time.Second); err != nil {
+			utils.LogError("WorkerPool", "Ошибка остановки пула", err)
+		}
+	}()
+
 	userRepo := repository.NewUserRepository(dbpool)
 	accountRepo := repository.NewAccountRepository(dbpool)
 	transactionRepo := repository.NewTransactionRepository(dbpool)
@@ -77,6 +89,7 @@ func main() {
 	authService := services.NewAuthService("your_jwt_secret_change_me_in_production", time.Hour*24)
 	accountService := services.NewAccountServiceWithCache(accountRepo, redisCache)
 	transactionService := services.NewTransactionServiceWithCache(transactionRepo, accountRepo, redisCache)
+	transactionService.SetWorkerPool(workerPool) // Устанавливаем worker pool
 
 	authMiddleware := middleware.NewAuthMiddleware(authService)
 

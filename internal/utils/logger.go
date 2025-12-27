@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"log"
 	"time"
 )
@@ -17,25 +18,37 @@ const (
 	ColorGray   = "\033[90m"
 )
 
-func LogInfo(component, message string) {
+func LogInfo(component, message string, args ...interface{}) {
+	formattedMessage := message
+	if len(args) > 0 {
+		formattedMessage = fmt.Sprintf(message, args...)
+	}
 	log.Printf("%s[INFO]%s %s[%s]%s %s",
 		ColorBlue, ColorReset,
 		ColorCyan, component, ColorReset,
-		message)
+		formattedMessage)
 }
 
-func LogSuccess(component, message string) {
+func LogSuccess(component, message string, args ...interface{}) {
+	formattedMessage := message
+	if len(args) > 0 {
+		formattedMessage = fmt.Sprintf(message, args...)
+	}
 	log.Printf("%s[SUCCESS]%s %s[%s]%s %s",
 		ColorGreen, ColorReset,
 		ColorCyan, component, ColorReset,
-		message)
+		formattedMessage)
 }
 
-func LogWarning(component, message string) {
+func LogWarning(component, message string, args ...interface{}) {
+	formattedMessage := message
+	if len(args) > 0 {
+		formattedMessage = fmt.Sprintf(message, args...)
+	}
 	log.Printf("%s[WARNING]%s %s[%s]%s %s",
 		ColorYellow, ColorReset,
 		ColorCyan, component, ColorReset,
-		message)
+		formattedMessage)
 }
 
 func LogError(component, message string, err error) {
@@ -53,11 +66,15 @@ func LogError(component, message string, err error) {
 	}
 }
 
-func LogDebug(component, message string) {
+func LogDebug(component, message string, args ...interface{}) {
+	formattedMessage := message
+	if len(args) > 0 {
+		formattedMessage = fmt.Sprintf(message, args...)
+	}
 	log.Printf("%s[DEBUG]%s %s[%s]%s %s",
 		ColorPurple, ColorReset,
 		ColorCyan, component, ColorReset,
-		message)
+		formattedMessage)
 }
 
 func LogRequest(method, path, userID string) {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bank-prototype/internal/cache"
 	"bank-prototype/internal/handlers"
 	"bank-prototype/internal/middleware"
 	"bank-prototype/internal/repository"
@@ -8,18 +9,25 @@ import (
 	"bank-prototype/internal/utils"
 	"context"
 	"encoding/json"
+	"log"
 	"os"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/joho/godotenv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/valyala/fasthttp"
 )
 
 func main() {
+	// Загружаем .env файл
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file, using environment variables")
+	}
+
 	utils.LogInfo("Server", "Запуск банковской системы...")
 
 	if err := runMigrations(); err != nil {
@@ -27,7 +35,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	dbURL := "postgres://user:pass@localhost:5435/bank?sslmode=disable"
+	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		dbURL = "postgres://user:pass@localhost:5435/bank?sslmode=disable"
+	}
 	utils.LogInfo("Database", "Подключение к PostgreSQL...")
 
 	dbpool, err := pgxpool.New(context.Background(), dbURL)
@@ -39,13 +50,33 @@ func main() {
 
 	utils.LogSuccess("Database", "Подключение к базе данных установлено")
 
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		redisURL = "localhost:6379"
+	}
+	utils.LogInfo("Redis", "Подключение к Redis: "+redisURL)
+
+	redisCache := cache.NewRedisCache(redisURL)
+	defer func() {
+		_ = redisCache.Close()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := redisCache.Ping(ctx); err != nil {
+		utils.LogError("Redis", "Ошибка подключения к Redis", err)
+		os.Exit(1)
+	}
+	utils.LogSuccess("Redis", "Подключение к Redis установлено")
+
 	userRepo := repository.NewUserRepository(dbpool)
 	accountRepo := repository.NewAccountRepository(dbpool)
 	transactionRepo := repository.NewTransactionRepository(dbpool)
 
 	authService := services.NewAuthService("your_jwt_secret_change_me_in_production", time.Hour*24)
-	accountService := services.NewAccountService(accountRepo)
-	transactionService := services.NewTransactionService(transactionRepo, accountRepo)
+	accountService := services.NewAccountServiceWithCache(accountRepo, redisCache)
+	transactionService := services.NewTransactionServiceWithCache(transactionRepo, accountRepo, redisCache)
 
 	authMiddleware := middleware.NewAuthMiddleware(authService)
 
@@ -143,7 +174,10 @@ func healthHandler(ctx *fasthttp.RequestCtx) {
 }
 
 func runMigrations() error {
-	dbURL := "postgres://user:pass@localhost:5435/bank?sslmode=disable"
+	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		dbURL = "postgres://user:pass@localhost:5435/bank?sslmode=disable"
+	}
 
 	utils.LogInfo("Migration", "Запуск миграций базы данных")
 

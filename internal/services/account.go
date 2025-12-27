@@ -1,13 +1,16 @@
 package services
 
 import (
-	"context"
-	"errors"
-	"fmt"
-
+	"bank-prototype/internal/cache"
 	"bank-prototype/internal/models"
 	"bank-prototype/internal/repository"
 	"bank-prototype/internal/utils"
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+
+	"github.com/redis/go-redis/v9"
 )
 
 var (
@@ -20,11 +23,20 @@ const MaxActiveAccounts = 5
 
 type AccountService struct {
 	accountRepo *repository.AccountRepository
+	cache       *cache.RedisCache
 }
 
 func NewAccountService(accountRepo *repository.AccountRepository) *AccountService {
 	return &AccountService{
 		accountRepo: accountRepo,
+		cache:       nil,
+	}
+}
+
+func NewAccountServiceWithCache(accountRepo *repository.AccountRepository, cache *cache.RedisCache) *AccountService {
+	return &AccountService{
+		accountRepo: accountRepo,
+		cache:       cache,
 	}
 }
 
@@ -48,6 +60,11 @@ func (s *AccountService) CreateAccount(ctx context.Context, userID string) (*mod
 		return nil, err
 	}
 
+	if s.cache != nil {
+		_ = s.cache.Delete(ctx, cache.UserAccountsKey(userID))
+		utils.LogInfo("Cache", fmt.Sprintf("Инвалидирован кеш списка счетов пользователя %s", userID))
+	}
+
 	utils.LogSuccess("AccountService", fmt.Sprintf("Счёт %s успешно создан для пользователя %s (баланс: %.2f, активных счетов: %d/%d)", account.ID, userID, account.Balance, activeCount+1, MaxActiveAccounts))
 
 	return account, nil
@@ -56,10 +73,34 @@ func (s *AccountService) CreateAccount(ctx context.Context, userID string) (*mod
 func (s *AccountService) GetUserAccounts(ctx context.Context, userID string) ([]models.Account, error) {
 	utils.LogInfo("AccountService", fmt.Sprintf("Получение списка счетов пользователя %s", userID))
 
+	if s.cache != nil {
+		cacheKey := cache.UserAccountsKey(userID)
+		var accounts []models.Account
+
+		err := s.cache.GetJSON(ctx, cacheKey, &accounts)
+		if err == nil {
+			utils.LogSuccess("Cache", fmt.Sprintf("HIT: Список счетов пользователя %s получен из кеша (%d счетов)", userID, len(accounts)))
+			return accounts, nil
+		} else if err != redis.Nil {
+			utils.LogWarning("Cache", fmt.Sprintf("Ошибка чтения из кеша: %v", err))
+		} else {
+			utils.LogInfo("Cache", fmt.Sprintf("MISS: Список счетов пользователя %s не найден в кеше", userID))
+		}
+	}
+
 	accounts, err := s.accountRepo.GetByUserID(ctx, userID)
 	if err != nil {
 		utils.LogError("AccountService", fmt.Sprintf("Ошибка получения счетов пользователя %s", userID), err)
 		return nil, err
+	}
+
+	if s.cache != nil {
+		cacheKey := cache.UserAccountsKey(userID)
+		if err := s.cache.SetJSON(ctx, cacheKey, accounts, cache.UserAccountsTTL); err != nil {
+			utils.LogWarning("Cache", fmt.Sprintf("Не удалось сохранить в кеш: %v", err))
+		} else {
+			utils.LogSuccess("Cache", fmt.Sprintf("Список счетов пользователя %s сохранён в кеш (TTL: %v)", userID, cache.UserAccountsTTL))
+		}
 	}
 
 	activeCount := 0
@@ -80,10 +121,55 @@ func (s *AccountService) GetUserAccounts(ctx context.Context, userID string) ([]
 func (s *AccountService) GetAccount(ctx context.Context, accountID, userID string) (*models.Account, error) {
 	utils.LogInfo("AccountService", fmt.Sprintf("Получение информации о счёте %s", accountID))
 
-	account, err := s.accountRepo.GetByID(ctx, accountID)
-	if err != nil {
-		utils.LogError("AccountService", fmt.Sprintf("Счёт %s не найден", accountID), err)
-		return nil, repository.ErrAccountNotFound
+	var account *models.Account
+	var err error
+
+	if s.cache != nil {
+		balanceKey := cache.AccountBalanceKey(accountID)
+		balanceStr, cacheErr := s.cache.Get(ctx, balanceKey)
+
+		if cacheErr == nil {
+			utils.LogSuccess("Cache", fmt.Sprintf("HIT: Баланс счёта %s найден в кеше: %s", accountID, balanceStr))
+
+			account, err = s.accountRepo.GetByID(ctx, accountID)
+			if err != nil {
+				utils.LogError("AccountService", fmt.Sprintf("Счёт %s не найден", accountID), err)
+				return nil, repository.ErrAccountNotFound
+			}
+
+			balance, parseErr := strconv.ParseFloat(balanceStr, 64)
+			if parseErr == nil {
+				account.Balance = balance
+			}
+		} else if cacheErr == redis.Nil {
+			utils.LogInfo("Cache", fmt.Sprintf("MISS: Баланс счёта %s не найден в кеше", accountID))
+
+			account, err = s.accountRepo.GetByID(ctx, accountID)
+			if err != nil {
+				utils.LogError("AccountService", fmt.Sprintf("Счёт %s не найден", accountID), err)
+				return nil, repository.ErrAccountNotFound
+			}
+
+			if saveErr := s.cache.Set(ctx, balanceKey, fmt.Sprintf("%.2f", account.Balance), cache.AccountBalanceTTL); saveErr != nil {
+				utils.LogWarning("Cache", fmt.Sprintf("Не удалось сохранить баланс в кеш: %v", saveErr))
+			} else {
+				utils.LogSuccess("Cache", fmt.Sprintf("Баланс счёта %s сохранён в кеш: %.2f (TTL: %v)", accountID, account.Balance, cache.AccountBalanceTTL))
+			}
+		} else {
+			utils.LogWarning("Cache", fmt.Sprintf("Ошибка чтения из кеша: %v", cacheErr))
+
+			account, err = s.accountRepo.GetByID(ctx, accountID)
+			if err != nil {
+				utils.LogError("AccountService", fmt.Sprintf("Счёт %s не найден", accountID), err)
+				return nil, repository.ErrAccountNotFound
+			}
+		}
+	} else {
+		account, err = s.accountRepo.GetByID(ctx, accountID)
+		if err != nil {
+			utils.LogError("AccountService", fmt.Sprintf("Счёт %s не найден", accountID), err)
+			return nil, repository.ErrAccountNotFound
+		}
 	}
 
 	if account.UserID != userID {
@@ -148,6 +234,15 @@ func (s *AccountService) DeleteAccount(ctx context.Context, accountID, userID st
 	if err != nil {
 		utils.LogError("AccountService", fmt.Sprintf("Ошибка изменения статуса счёта %s", accountID), err)
 		return err
+	}
+
+	if s.cache != nil {
+		_ = s.cache.Delete(ctx,
+			cache.AccountBalanceKey(accountID),
+			cache.AccountInfoKey(accountID),
+			cache.UserAccountsKey(userID),
+		)
+		utils.LogInfo("Cache", fmt.Sprintf("Инвалидирован кеш для счёта %s и пользователя %s", accountID, userID))
 	}
 
 	utils.LogSuccess("AccountService", fmt.Sprintf("Счёт %s успешно закрыт", accountID))

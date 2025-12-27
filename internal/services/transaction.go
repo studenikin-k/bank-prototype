@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"bank-prototype/internal/cache"
 	"bank-prototype/internal/models"
 	"bank-prototype/internal/repository"
 	"bank-prototype/internal/utils"
@@ -19,6 +20,7 @@ var (
 type TransactionService struct {
 	transactionRepo *repository.TransactionRepository
 	accountRepo     *repository.AccountRepository
+	cache           *cache.RedisCache
 }
 
 func NewTransactionService(
@@ -28,6 +30,19 @@ func NewTransactionService(
 	return &TransactionService{
 		transactionRepo: transactionRepo,
 		accountRepo:     accountRepo,
+		cache:           nil,
+	}
+}
+
+func NewTransactionServiceWithCache(
+	transactionRepo *repository.TransactionRepository,
+	accountRepo *repository.AccountRepository,
+	cache *cache.RedisCache,
+) *TransactionService {
+	return &TransactionService{
+		transactionRepo: transactionRepo,
+		accountRepo:     accountRepo,
+		cache:           cache,
 	}
 }
 
@@ -59,6 +74,15 @@ func (s *TransactionService) Transfer(ctx context.Context, userID string, req mo
 	if err != nil {
 		utils.LogError("TransactionService", "Ошибка выполнения перевода", err)
 		return nil, err
+	}
+
+	if s.cache != nil {
+		_ = s.cache.Delete(ctx,
+			cache.AccountBalanceKey(req.FromAccountID),
+			cache.AccountBalanceKey(req.ToAccountID),
+			cache.AccountBalanceKey(repository.SystemBankAccountID),
+		)
+		utils.LogInfo("Cache", fmt.Sprintf("Инвалидирован кеш балансов счетов: %s, %s, system", req.FromAccountID, req.ToAccountID))
 	}
 
 	utils.LogSuccess("TransactionService", fmt.Sprintf("Перевод %s успешно выполнен", transaction.ID))
@@ -94,6 +118,15 @@ func (s *TransactionService) Payment(ctx context.Context, userID string, req mod
 	if err != nil {
 		utils.LogError("TransactionService", "Ошибка выполнения платежа", err)
 		return nil, err
+	}
+
+	if s.cache != nil {
+		_ = s.cache.Delete(ctx,
+			cache.AccountBalanceKey(req.FromAccountID),
+			cache.AccountBalanceKey(req.ToAccountID),
+			cache.AccountBalanceKey(repository.SystemBankAccountID),
+		)
+		utils.LogInfo("Cache", fmt.Sprintf("Инвалидирован кеш балансов счетов: %s, %s, system", req.FromAccountID, req.ToAccountID))
 	}
 
 	utils.LogSuccess("TransactionService", fmt.Sprintf("Платёж %s успешно выполнен", transaction.ID))

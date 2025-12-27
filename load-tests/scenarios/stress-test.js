@@ -4,23 +4,24 @@ import { BASE_URL } from '../config.js';
 
 export const options = {
     stages: [
+        { duration: '2m', target: 50 },
+        { duration: '5m', target: 200 },
+        { duration: '2m', target: 350 },
+        { duration: '10m', target: 500 },
         { duration: '2m', target: 20 },
-        { duration: '5m', target: 50 },
-        { duration: '2m', target: 100 },
-        { duration: '10m', target: 250 },
-        { duration: '2m', target: 0 },
     ],
     thresholds: {
         http_req_duration: ['p(99)<2000'],
         http_req_failed: ['rate<0.10'],
     },
+    setupTimeout: '3m',
 };
 
 export function setup() {
     console.log('Creating stress test users...');
     const users = [];
 
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 60; i++) {
         const timestamp = Date.now();
         const random = Math.floor(Math.random() * 100000) + i;
         const username = 'stressuser_' + timestamp + '_' + random;
@@ -76,7 +77,7 @@ export function setup() {
             }
         }
 
-        sleep(0.1);
+        sleep(0.05);
     }
 
     console.log('Created ' + users.length + ' users with accounts');

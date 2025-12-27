@@ -14,19 +14,46 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - bank-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: bank-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --save 60 1
+    healthcheck:
+      test: redis-cli ping
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - bank-network
 
   api:
     build: .
     ports:
       - "8080:8080"
     environment:
-      DB_URL: postgres://user:pass@db:5435/bank?sslmode=disable
+      DB_URL: postgres://user:pass@db:5432/bank?sslmode=disable
+      REDIS_URL: redis:6379
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - .:/app
+    networks:
+      - bank-network
 
+networks:
+  bank-network:
+    driver: bridge
 
 volumes:
   pgdata:
+  redis_data:
